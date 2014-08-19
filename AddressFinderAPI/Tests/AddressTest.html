@@ -1,0 +1,147 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Address Search Test</title>
+    <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.3/themes/smoothness/jquery-ui.css">
+    <style>
+        .ui-autocomplete-loading {
+            background: white url('/images/ui-anim_basic_16x16.gif') right center no-repeat;
+        }
+
+        #TermsAuto {
+            width: 25em;
+        }
+    </style>
+</head>
+<body>
+    <div style="width:600px;float:left;display:inline-block;">
+        <h2>Search by Terms</h2>
+        <input type="text" id="Terms" size="50" />
+        <input type="button" value="Search" onclick="Search();" />
+        <p id="addresses" />
+    </div>
+    <div style="margin-left:600px;">
+        <h2>Search by Terms</h2>
+        <input type="text" id="TermsAuto" size="50" />
+        <p id="addressesAuto" />
+        <div>
+            Result:
+            <div id="log" style="height: 100px; width: 400px; overflow: auto;" class="ui-widget-content"></div>
+        </div>
+        <input type="text" id="Address1" size="50" /><br />
+        <input type="text" id="Address2" size="50" /><br />
+        <input type="text" id="Address3" size="50" /><br />
+        <input type="text" id="City" size="50" /><br />
+        <input type="text" id="PostCode" size="50" /><br />
+        <div>
+            Explain:
+            <div id="explain" style="height: 600px; width: 600px; overflow: auto;" class="ui-widget-content"></div>
+        </div>
+    </div>
+    <script src="http://code.jquery.com/jquery-1.9.1.js"></script>
+    <script src="http://code.jquery.com/ui/1.10.3/jquery-ui.js"></script>
+    <script>
+        function Search() {
+            var terms = $('#Terms').val();
+            var uri = "/api/address/search/" + encodeURIComponent(terms);
+
+            $.getJSON(uri)
+                .done(function (data) {
+                    $('#addresses').text('');
+                    // On success, 'data' contains a list of addresses.
+                    $.each(data.Results, function (key, item) {
+                        // Add a list item for the product.
+                        $('<li>', { text: formatItem(item) }).appendTo($('#addresses'));
+                    })
+                });
+        }
+        function formatItem(item) {
+            return item.Format.AddressOneLine;
+        }
+
+        var searchedAddresses;
+
+        $(function () {
+            function log(message) {
+                $("<div>").text(message).prependTo("#log");
+                $("#log").scrollTop(0);
+            }
+
+            $("#TermsAuto").autocomplete({
+
+                source: function (request, response) {
+                    var uri = "/api/address/search/" + encodeURIComponent(request.term);
+
+                    $.ajax({
+                        url: uri,
+                        type: 'GET',
+                        dataType: 'json',
+                        success: function (data) {
+                            if (data.Status === "OK") {
+                                searchedAddresses = data.Results;
+                                response($.map(data.Results, function (item) {
+                                    return {
+                                        label: item.Format.AddressOneLine + ", Score(" + item.Score + ")",
+                                        value: item.Format.AddressOneLine
+                                    }
+                                }));
+                            } else {
+                                log(data.ErrorMessage);
+                            }
+                        },
+                        error: function (x, y, z) {
+                            //log(x + '\n' + y + '\n' + z);
+                        }
+                    });
+                },
+                minLength: 2,
+                select: function (event, ui) {
+                    log(ui.item ?
+                      "Selected: " + ui.item.value :
+                      "Nothing selected, input was " + this.value);
+                    $.each(searchedAddresses, function (key, item) {
+                        if (item.Format.AddressOneLine === ui.item.value) {
+                            $('#Address1').val(item.Format.AddressLine1);
+                            $('#Address2').val(item.Format.AddressLine2);
+                            $('#Address3').val(item.Format.AddressLine3);
+                            $('#City').val(item.Format.City);
+                            $('#PostCode').val(item.Format.PostCode);
+                            PrintExplanations(item.Explanations);
+                        }
+                    })                    
+                },
+                open: function () {
+                    $(this).removeClass("ui-corner-all").addClass("ui-corner-top");
+                },
+                close: function () {
+                    $(this).removeClass("ui-corner-top").addClass("ui-corner-all");
+                }
+            });
+        });
+        function PrintExplanations(xplanations) {
+            $("#explain").text("");
+            PrintExplanationsRecursive(xplanations, 0);
+        }
+        function PrintExplanationsRecursive(xplanations, depth) {
+            if (xplanations == null)
+                return;
+
+            var indent = ""; 
+            if (depth > 0) {
+                var arrayLength = depth * 4;
+                indent = new Array(arrayLength).join(".");
+            }
+
+            $.each(xplanations, function (key, explaination) {
+                if (depth == 0) {
+                    $("<div>").text(explaination.value + (explaination.match ? " Match " : " ") + explaination.description).appendTo("#explain");
+                }
+                else {
+                    $("<div>").text(depth + indent + explaination.value + (explaination.match ? " Match " : " ") + explaination.description).appendTo("#explain");
+                }
+                PrintExplanationsRecursive(explaination.details, depth + 1);
+            })
+        }
+    </script>
+</body>
+</html>

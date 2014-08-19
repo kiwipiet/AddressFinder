@@ -1,0 +1,140 @@
+<?xml version="1.0"?>
+<project name="AddressFinder" default="all" basedir=".">
+  <description>AddressFinder</description>
+
+  <!-- Global setting to force all compilation to use .NET 4.0 -->
+  <property name="nant.settings.currentframework" value="net-4.0"/>
+
+  <property name="root.dir" value="${directory::get-current-directory()}" readonly="true" />
+  <property name="output.dir" value="${root.dir}\build" overwrite="false" />
+  <property name="company.name" value="Peter's Software House" readonly="true" />
+
+  <property name="test.skip" value="false" unless="${property::exists('test.skip')}" />
+
+  <target name="debug" description="Psuedo target that configures a debug build - use 'debug all' to build in debug mode">
+    <property name="build.code.configuration" value="debug" />
+  </target>
+
+  <target name="release" description="Psuedo target that configures a release build - use 'release all' to build in release mode">
+    <property name="build.code.configuration" value="release" />
+  </target>
+
+  <target name="quick" description="Psuedo target that speeds up the build by not running tests or test coverage - use 'release quick all' to build in release mode without tests">
+    <property name="test.skip" value="true" />
+    <property name="test.skipcoverage" value="true" />
+  </target>
+
+  <target name="all"
+          description="Builds, tests and packages all GSS subsystems according to the configured settings"
+          depends="build, test, package, deploy" />
+
+  <target name="assembly-info"
+      description="Generates the GlobalVersionInfo.cs file - required to be run before opening the solution in Visual Studio"
+      depends="build.properties, build.getgithash, build.versioninfo" />
+
+  <!--depends="package.properties, package.clean, build.properties, build.getgithash, build.versioninfo, build.code.compile, build.database.compile" -->
+  <target name="build"
+      description="Builds AddressFinder source"
+              depends="package.properties, package.clean, build.properties, build.getgithash, build.versioninfo, build.code.compile" />
+
+  <target name="build.properties">
+    <property name="build.code.configuration" value="release" unless="${property::exists('build.code.configuration')}" />
+    <property name="build.code.solution" value="${root.dir}\AddressFinder.sln" unless="${property::exists('build.code.solution')}" />
+    <property name="build.versioninfo.cs" value="${root.dir}\GlobalVersionInfo.cs" />
+    <property name="build.number" value="0" unless="${property::exists('build.number')}" />
+    <tstamp property="build.date" pattern="yyyy.MM.dd" verbose="true" />
+    <tstamp property="build.date.year" pattern="yyyy" verbose="true" />
+  </target>
+
+  <target name="build.getgithash" unless="${property::exists('build.githash')}">
+    <exec program="git" commandline="rev-parse --verify HEAD" output="changeset.txt" />
+    <loadfile file="changeset.txt" property="build.githash.file" />
+    <property name="build.githash" value="${string::trim(build.githash.file)}" />
+    <delete file="changeset.txt" />
+  </target>
+
+  <target name="build.versioninfo">
+    <asminfo output="${build.versioninfo.cs}" language="CSharp">
+      <imports>
+        <import namespace="System.Reflection" />
+      </imports>
+      <attributes>
+        <attribute type="AssemblyConfigurationAttribute" value="${build.code.configuration}" />
+        <attribute type="AssemblyVersionAttribute" value="${build.date}.${build.number}" />
+        <attribute type="AssemblyFileVersionAttribute" value="${build.date}.${build.number}" />
+        <attribute type="AssemblyInformationalVersionAttribute" value="Git Revision ${build.githash}" />
+        <attribute type="AssemblyCopyrightAttribute" value="Copyright (c) Peter's Software House 2000-${build.date.year}" />
+      </attributes>
+    </asminfo>
+  </target>
+
+  <target name="package.properties">
+    <property name="package.deploydir" value="${output.dir}\deploy\" unless="${property::exists('package.deploydir')}" />
+  </target>
+
+  <target name="package.clean" depends="package.properties">
+    <delete>
+      <fileset>
+        <include name="${package.deploydir}\**" />
+      </fileset>
+    </delete>
+  </target>
+
+  <target name="package.prepare">
+  </target>
+
+  <target name="package.zipfiles">
+  </target>
+
+  <target name="package"
+      description="Packages AddressFinder according to the configured settings"
+      depends="package.properties, package.clean, package.prepare, package.zipfiles" />
+
+  <target name="deploy"
+          description="Deploy AddressFinder source"
+            />
+
+  <target name="build.code.compile">
+    <!-- Rebuild does some weird stuff so clean then build -->
+    <msbuild project="${build.code.solution}" target="Clean;Build">
+      <property name="Configuration" value="${build.code.configuration}" />
+      <property name="BuildProjectReferences" value="true" />
+      <property name="OverwriteReadOnlyFiles" value="true" />
+      <property name="VisualStudioVersion" value="12.0" />
+      <arg value="/maxcpucount:${environment::get-variable('NUMBER_OF_PROCESSORS')}"/>
+    </msbuild>
+  </target>
+
+  <target name="test"
+          description="Tests AddressFinder source"
+          depends="test.properties, test.nunit" />
+
+  <target name="test.properties">
+    <property name="test.nunitdir" value="${root.dir}\lib\NUnit\" unless="${property::exists('test.nunitdir')}" />
+    <property name="test.nunitrunner" value="nunit-console.exe" unless="${property::exists('test.nunitrunner')}" />
+    <property name="test.reportdir" value="${output.dir}\testreports" unless="${property::exists('test.reportdir')}" />
+  </target>
+
+  <target name="test.nunit" unless="${test.skip}">
+    <delete dir="${test.reportdir}" />
+    <mkdir dir="${test.reportdir}" />
+    <call target="test.execute.addressfinder.tests" />
+  </target>
+
+  <target name="test.execute.addressfinder.tests">
+    <property name="test.workingdir" value="${root.dir}\addressfinder.Tests\bin\${build.code.configuration}\" />
+    <property name="test.assembly" value="addressfinder.Tests.dll" />
+    <call target="test.execute.nunit" />
+  </target>
+
+  <target name="test.execute.nunit">
+    <exec program="${test.nunitrunner}"
+        basedir="${test.nunitdir}"
+        workingdir="${test.workingdir}"
+		failonerror="false">
+      <arg value="/noshadow" />
+      <arg value="/xml=${test.reportdir}\${test.assembly}.xml" />
+      <arg line="${test.assembly}"/>
+    </exec>
+  </target>
+</project>
